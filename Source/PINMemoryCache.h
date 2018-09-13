@@ -38,12 +38,13 @@ PIN_SUBCLASSING_RESTRICTED
 /// @name Core
 
 /**
- The total accumulated cost.
+ The total accumulated cost.    // 到现在为止累计的资源量
  */
 @property (readonly) NSUInteger totalCost;
 
 /**
  The maximum cost allowed to accumulate before objects begin to be removed with <trimToCostByDate:>.
+ 使用<trimToCostByDate：>在开始移除对象之前允许累积的最大资源量
  */
 @property (assign) NSUInteger costLimit;
 
@@ -51,6 +52,7 @@ PIN_SUBCLASSING_RESTRICTED
  The maximum number of seconds an object is allowed to exist in the cache. Setting this to a value
  greater than `0.0` will start a recurring GCD timer with the same period that calls <trimToDate:>.
  Setting it back to `0.0` will stop the timer. Defaults to `0.0`.
+ 能够缓存的最大秒数，如果超过 0，会开启一个 gcd 的定时器，等到设置为0 将停止计时器
  */
 @property (assign) NSTimeInterval ageLimit;
 
@@ -64,18 +66,21 @@ PIN_SUBCLASSING_RESTRICTED
  @note If an object-level age limit is set via one of the @c -setObject:forKey:withAgeLimit methods,
        that age limit overrides self.ageLimit. The overridden object age limit could be greater or
        less than self.agelimit but must be greater than zero.
+ 对象有 Time To Live 的生命周期
  */
 @property (nonatomic, readonly, getter=isTTLCache) BOOL ttlCache;
 
 /**
  When `YES` on iOS the cache will remove all objects when the app receives a memory warning.
  Defaults to `YES`.
+ // 内存警告的时候移除所有对象
  */
 @property (assign) BOOL removeAllObjectsOnMemoryWarning;
 
 /**
  When `YES` on iOS the cache will remove all objects when the app enters the background.
  Defaults to `YES`.
+ // 进入背景的时候移除所有对象
  */
 @property (assign) BOOL removeAllObjectsOnEnteringBackground;
 
@@ -143,13 +148,17 @@ PIN_SUBCLASSING_RESTRICTED
  A shared cache.
  
  @result The shared singleton cache instance.
+ 单例对象
  */
 @property (class, strong, readonly) PINMemoryCache *sharedCache;
 
+// 创建一个线程用于内容获取
 - (instancetype)initWithOperationQueue:(PINOperationQueue *)operationQueue;
 
+// 创建一个线程用于内容获取，并设置名字
 - (instancetype)initWithName:(NSString *)name operationQueue:(PINOperationQueue *)operationQueue;
 
+// 创建一个线程用于内容获取，并设置名字并告知是否有 Time To Live
 - (instancetype)initWithName:(NSString *)name operationQueue:(PINOperationQueue *)operationQueue ttlCache:(BOOL)ttlCache NS_DESIGNATED_INITIALIZER;
 
 #pragma mark - Asynchronous Methods

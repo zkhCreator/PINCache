@@ -61,7 +61,7 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     
     if (self = [super init]) {
         _name = [name copy];
-      
+      // 初始化创建2个缓存
         //10 may actually be a bit high, but currently much of our threads are blocked on empyting the trash. Until we can resolve that, lets bump this up.
         _operationQueue = [[PINOperationQueue alloc] initWithMaxConcurrentOperations:10];
         _diskCache = [[PINDiskCache alloc] initWithName:_name
@@ -117,17 +117,22 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     if (!key || !block)
         return;
     
+    // 检查数据是否存在
     [self.operationQueue scheduleOperation:^{
         [self->_memoryCache objectForKeyAsync:key completion:^(PINMemoryCache *memoryCache, NSString *memoryCacheKey, id memoryCacheObject) {
+            // 先检查内存
             if (memoryCacheObject) {
                 // Update file modification date. TODO: make this a separate method?
+                // 这里获取文件路径，但是不存储原因是啥？
                 [self->_diskCache fileURLForKeyAsync:memoryCacheKey completion:^(NSString * _Nonnull key, NSURL * _Nullable fileURL) {}];
                 [self->_operationQueue scheduleOperation:^{
                     block(self, memoryCacheKey, memoryCacheObject);
                 }];
             } else {
+                // 内存不存在检查硬盘，是否存在
                 [self->_diskCache objectForKeyAsync:memoryCacheKey completion:^(PINDiskCache *diskCache, NSString *diskCacheKey, id <NSCoding> diskCacheObject) {
                     
+                    // 如果存在，就写入硬盘内存，方便下次直接读取
                     [self->_memoryCache setObjectAsync:diskCacheObject forKey:diskCacheKey completion:nil];
                     
                     [self->_operationQueue scheduleOperation:^{
@@ -158,18 +163,23 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
 
 - (void)setObjectAsync:(nonnull id)object forKey:(nonnull NSString *)key withCost:(NSUInteger)cost ageLimit:(NSTimeInterval)ageLimit completion:(nullable PINCacheObjectBlock)block
 {
+    // 值和对象均无效
     if (!key || !object)
         return;
-  
+    // 获得现成 group
     PINOperationGroup *group = [PINOperationGroup asyncOperationGroupWithQueue:_operationQueue];
     
+    // 用 memoryCache 写入内容，创建一个任务 operation
     [group addOperation:^{
         [self->_memoryCache setObject:object forKey:key withCost:cost ageLimit:ageLimit];
     }];
+    
+    // 用 diskCache 写入内容，创建一个任务 operation
     [group addOperation:^{
         [self->_diskCache setObject:object forKey:key withAgeLimit:ageLimit];
     }];
-  
+    
+    // 如果有回调在完成之后触发回调
     if (block) {
         [group setCompletion:^{
             block(self, key, object);
@@ -179,6 +189,7 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     [group start];
 }
 
+// 删除同设置，有效性后，删除硬盘和内存
 - (void)removeObjectForKeyAsync:(NSString *)key completion:(PINCacheObjectBlock)block
 {
     if (!key)
@@ -202,6 +213,7 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     [group start];
 }
 
+// 删除所有，同上
 - (void)removeAllObjectsAsync:(PINCacheBlock)block
 {
     PINOperationGroup *group = [PINOperationGroup asyncOperationGroupWithQueue:_operationQueue];
@@ -222,6 +234,7 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     [group start];
 }
 
+// 压缩同上
 - (void)trimToDateAsync:(NSDate *)date completion:(PINCacheBlock)block
 {
     if (!date)
@@ -245,6 +258,7 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     [group start];
 }
 
+// 删除过期，同上
 - (void)removeExpiredObjectsAsync:(PINCacheBlock)block
 {
     PINOperationGroup *group = [PINOperationGroup asyncOperationGroupWithQueue:_operationQueue];
@@ -267,6 +281,7 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
 
 #pragma mark - Public Synchronous Accessors -
 
+// 空间总大小，根据 diskCache 获取
 - (NSUInteger)diskByteCount
 {
     __block NSUInteger byteCount = 0;
@@ -278,6 +293,7 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     return byteCount;
 }
 
+// 是否包含，两边均检查
 - (BOOL)containsObjectForKey:(NSString *)key
 {
     if (!key)
@@ -286,6 +302,7 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     return [_memoryCache containsObjectForKey:key] || [_diskCache containsObjectForKey:key];
 }
 
+// 获得对象，两边均检查，先内存后硬盘。
 - (nullable id)objectForKey:(NSString *)key
 {
     if (!key)
@@ -306,6 +323,7 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     return object;
 }
 
+// 设置，同上
 - (void)setObject:(id <NSCoding>)object forKey:(NSString *)key
 {
     [self setObject:object forKey:key withCost:0];
@@ -330,11 +348,13 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     [_diskCache setObject:object forKey:key withAgeLimit:ageLimit];
 }
 
+// 获得编码后的对象
 - (nullable id)objectForKeyedSubscript:(NSString *)key
 {
     return [self objectForKey:key];
 }
 
+// 更新编码后的对象
 - (void)setObject:(nullable id)obj forKeyedSubscript:(NSString *)key
 {
     if (obj == nil) {
@@ -344,6 +364,7 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     }
 }
 
+// 设置对应的 key
 - (void)removeObjectForKey:(NSString *)key
 {
     if (!key)
@@ -353,6 +374,7 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     [_diskCache removeObjectForKey:key];
 }
 
+// 压缩，同上
 - (void)trimToDate:(NSDate *)date
 {
     if (!date)
@@ -362,12 +384,14 @@ static NSString * const PINCacheSharedName = @"PINCacheShared";
     [_diskCache trimToDate:date];
 }
 
+// 删除过期，同上
 - (void)removeExpiredObjects
 {
     [_memoryCache removeExpiredObjects];
     [_diskCache removeExpiredObjects];
 }
 
+// 删除所有，同上
 - (void)removeAllObjects
 {
     [_memoryCache removeAllObjects];
